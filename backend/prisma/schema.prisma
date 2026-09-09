@@ -1,0 +1,244 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========================================
+// USER & AUTHENTICATION
+// ========================================
+
+model User {
+  id            String   @id @default(uuid())
+  emailOrPhone  String   @unique
+  passwordHash  String
+  salt          String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  teacherProfile TeacherProfile?
+
+  @@map("users")
+}
+
+model TeacherProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  firstName       String
+  lastName        String
+  emailOrPhone    String
+  language        String   @default("O'zbekcha")
+  subject         String
+  school          String   @default("")
+  experience      String   @default("")
+  experienceYears Int      @default(0)
+  photo           String?
+  phone           String   @default("")
+  email           String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  classes   Class[]
+  students  Student[]
+  schedules Schedule[]
+  lessons   Lesson[]
+  attendance Attendance[]
+
+  @@index([userId])
+  @@map("teacher_profiles")
+}
+
+// ========================================
+// CLASSES & SCHEDULES
+// ========================================
+
+model Class {
+  id            String   @id @default(uuid())
+  teacherId     String
+  name          String   // "7-A"
+  grade         Int      // 7
+  section       String   // "A"
+  subject       String   // "Mathematics"
+  academicYear  String   // "2026/2027"
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  teacher   TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  students  Student[]
+  schedules Schedule[]
+  lessons   Lesson[]
+
+  @@unique([teacherId, name, academicYear])
+  @@index([teacherId])
+  @@map("classes")
+}
+
+// Schedule represents a recurring weekly lesson slot
+// Example: "Every Monday 08:00-08:45"
+model Schedule {
+  id           String   @id @default(uuid())
+  teacherId    String
+  classId      String
+  subject      String
+  dayOfWeek    Int      // 1=Monday, 2=Tuesday, ..., 7=Sunday
+  lessonNumber Int      // 1, 2, 3, ..., 8
+  startTime    String   // "08:00"
+  endTime      String   // "08:45"
+  room         String   // "101"
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  teacher  TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  class    Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
+  lessons  Lesson[]
+
+  @@unique([classId, dayOfWeek, lessonNumber])
+  @@index([teacherId])
+  @@index([classId])
+  @@index([teacherId, dayOfWeek, startTime])
+  @@map("schedules")
+}
+
+// Lesson represents an actual dated occurrence of a lesson
+// Example: "2026-09-14, Monday, 08:00-08:45"
+model Lesson {
+  id           String   @id @default(uuid())
+  teacherId    String
+  classId      String
+  subject      String
+  scheduleId   String?
+  date         String   // "2026-09-14"
+  startTime    String   // "08:00"
+  endTime      String   // "08:45"
+  room         String   // "101"
+  topic        String   @default("")
+  lessonNumber Int      @default(1)
+  status       String   @default("UPCOMING") // UPCOMING, CURRENT, COMPLETED, CANCELLED
+  source       String   @default("SCHEDULE") // SCHEDULE, KTP, MANUAL
+  manualOverride Boolean @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  teacher    TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  class      Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
+  schedule   Schedule?      @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  attendance Attendance[]
+
+  @@unique([classId, date, startTime])
+  @@index([teacherId])
+  @@index([classId])
+  @@index([date])
+  @@index([scheduleId])
+  @@map("lessons")
+}
+
+// ========================================
+// STUDENTS
+// ========================================
+
+model Student {
+  id           String   @id @default(uuid())
+  teacherId    String
+  classId      String
+  firstName    String
+  lastName     String
+  studentNumber String
+  birthDate    String   // "2010-05-15"
+  gender       String   // "M", "F", "O"
+  phone        String   @default("")
+  photo        String?
+  status       String   @default("ACTIVE") // ACTIVE, INACTIVE, TRANSFERRED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  teacher    TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  class      Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
+  attendance Attendance[]
+
+  @@index([teacherId])
+  @@index([classId])
+  @@index([teacherId, classId])
+  @@map("students")
+}
+
+// ========================================
+// ATTENDANCE
+// ========================================
+
+model Attendance {
+  id              String   @id @default(uuid())
+  lessonId        String
+  studentId       String
+  status          String   // PRESENT, LATE, ABSENT, EXCUSED
+  source          String   @default("MANUAL") // MANUAL, FACE, QR, NFC
+  confidence      Float?
+  lateMinutes     Int?
+  note            String?
+  manualOverride  Boolean  @default(false)
+  originalSource  String?
+  detectedAt      DateTime?
+  confirmedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations (Note: teacherId inferred via lesson.teacherId)
+  lesson   Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  student  Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([lessonId, studentId])
+  @@index([lessonId])
+  @@index([studentId])
+  @@map("attendances")
+}
+
+// ========================================
+// FUTURE: KTP, CAMERA, FACE, QR, NFC, etc.
+// (Schema structure prepared but not fully implemented in Phase 1)
+// ========================================
+
+model KTPDocument {
+  id           String   @id @default(uuid())
+  teacherId    String
+  classId      String
+  subject      String
+  academicYear String
+  fileName     String
+  content      String?  // Parsed/extracted content
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  entries KTPEntry[]
+
+  @@index([teacherId])
+  @@index([classId])
+  @@map("ktp_documents")
+}
+
+model KTPEntry {
+  id         String   @id @default(uuid())
+  ktpId      String
+  week       Int
+  day        String
+  topic      String
+  hours      Int
+  createdAt  DateTime @default(now())
+
+  ktp KTPDocument @relation(fields: [ktpId], references: [id], onDelete: Cascade)
+
+  @@index([ktpId])
+  @@map("ktp_entries")
+}
