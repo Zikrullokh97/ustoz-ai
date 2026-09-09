@@ -1,0 +1,6 @@
+{
+  "name": "Ustoz AI",
+  "description": "Ustoz AI — O'qituvchi yordamchisi: haftalik dars jadvali, o'quvchilarni fayldan import qilish, KTP AI tahlili va real vaqtda tezkor davomat tizimi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
